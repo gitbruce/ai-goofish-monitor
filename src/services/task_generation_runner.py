@@ -16,10 +16,10 @@ def build_criteria_filename(keyword: str) -> str:
         char for char in keyword.lower().replace(" ", "_")
         if char.isalnum() or char in "_-"
     ).rstrip()
-    return f"prompts/{safe_keyword}_criteria.txt"
+    return f"prompts/tasks/{safe_keyword}.txt"
 
 
-def build_task_create(req: TaskGenerateRequest, criteria_file: str) -> TaskCreate:
+def build_task_create(req: TaskGenerateRequest, criteria_file: str, category_id: str = "generic") -> TaskCreate:
     return TaskCreate(
         task_name=req.task_name,
         enabled=True,
@@ -40,6 +40,7 @@ def build_task_create(req: TaskGenerateRequest, criteria_file: str) -> TaskCreat
         region=req.region,
         decision_mode=req.decision_mode or "ai",
         keyword_rules=req.keyword_rules,
+        category_id=category_id,
     )
 
 
@@ -47,7 +48,7 @@ async def save_generated_criteria(output_filename: str, generated_criteria: str)
     if not generated_criteria or not generated_criteria.strip():
         raise RuntimeError("AI 未能生成分析标准，返回内容为空。")
 
-    os.makedirs("prompts", exist_ok=True)
+    os.makedirs(os.path.dirname(output_filename), exist_ok=True)
     async with aiofiles.open(output_filename, "w", encoding="utf-8") as file:
         await file.write(generated_criteria)
 
@@ -89,10 +90,10 @@ async def run_ai_generation_job(
         async def report_progress(step_key: str, message: str) -> None:
             await advance_job(generation_service, job_id, step_key, message)
 
-        generated_criteria = await generate_criteria(
+        generated_criteria, category_id = await generate_criteria(
             user_description=req.description or "",
-            reference_file_path="prompts/macbook_criteria.txt",
             progress_callback=report_progress,
+            category_id=req.category_id,
         )
 
         await advance_job(
@@ -109,9 +110,11 @@ async def run_ai_generation_job(
             "task",
             "分析标准已生成，正在创建任务记录。",
         )
-        task = await task_service.create_task(build_task_create(req, output_filename))
+        task = await task_service.create_task(
+            build_task_create(req, output_filename, category_id)
+        )
         await reload_scheduler(task_service, scheduler_service)
-        await generation_service.complete(job_id, task, f"任务“{req.task_name}”创建完成。")
+        await generation_service.complete(job_id, task, f"任务「{req.task_name}」创建完成。")
     except Exception as exc:
         if os.path.exists(output_filename):
             os.remove(output_filename)

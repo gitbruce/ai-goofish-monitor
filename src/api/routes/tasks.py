@@ -115,7 +115,7 @@ async def generate_task(
                 },
             )
 
-        task = await service.create_task(build_task_create(req, ""))
+        task = await service.create_task(build_task_create(req, "", req.category_id or "generic"))
         await _reload_scheduler_if_needed(service, scheduler_service)
         return {"message": "任务创建成功。", "task": serialize_task(task, scheduler_service)}
 
@@ -181,23 +181,25 @@ async def update_task(
                     c for c in existing_task.keyword.lower().replace(' ', '_')
                     if c.isalnum() or c in "_-"
                 ).rstrip()
-                output_filename = f"prompts/{safe_keyword}_criteria.txt"
+                output_filename = f"prompts/tasks/{safe_keyword}.txt"
                 print(f"目标文件路径: {output_filename}")
                 print("开始调用 AI 生成新的分析标准...")
-                generated_criteria = await generate_criteria(
+                category_id = task_update.category_id or getattr(existing_task, "category_id", None)
+                generated_criteria, resolved_category = await generate_criteria(
                     user_description=description_for_ai,
-                    reference_file_path="prompts/macbook_criteria.txt"
+                    category_id=category_id,
                 )
                 if not generated_criteria or len(generated_criteria.strip()) == 0:
                     print("AI 返回的内容为空")
                     raise HTTPException(status_code=500, detail="AI 未能生成分析标准，返回内容为空。")
                 print(f"保存新的分析标准到: {output_filename}")
-                os.makedirs("prompts", exist_ok=True)
+                os.makedirs("prompts/tasks", exist_ok=True)
                 async with aiofiles.open(output_filename, 'w', encoding='utf-8') as f:
                     await f.write(generated_criteria)
                 print(f"新的分析标准已保存")
                 task_update.ai_prompt_criteria_file = output_filename
-                print(f"已更新 ai_prompt_criteria_file 字段为: {output_filename}")
+                task_update.category_id = resolved_category
+                print(f"已更新 ai_prompt_criteria_file={output_filename}, category_id={resolved_category}")
             except HTTPException:
                 raise
             except Exception as e:

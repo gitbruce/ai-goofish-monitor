@@ -43,7 +43,9 @@ SCHEMA_STATEMENTS = (
         region TEXT,
         decision_mode TEXT NOT NULL,
         keyword_rules_json TEXT NOT NULL,
-        is_running INTEGER NOT NULL
+        is_running INTEGER NOT NULL,
+        category_id TEXT NOT NULL DEFAULT 'generic',
+        incomplete INTEGER NOT NULL DEFAULT 0
     )
     """,
     """
@@ -143,6 +145,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     for statement in SCHEMA_STATEMENTS:
         conn.execute(statement)
     _migrate_result_items_status(conn)
+    _migrate_task_category_fields(conn)
     conn.commit()
 
 
@@ -164,6 +167,27 @@ def _migrate_result_items_status(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_results_filename_status_crawl"
         " ON result_items(result_filename, status, crawl_time DESC)"
+    )
+
+
+def _migrate_task_category_fields(conn: sqlite3.Connection) -> None:
+    """为 tasks 表添加 category_id 和 incomplete 列（仅执行一次）。"""
+    row = conn.execute(
+        "SELECT value FROM app_metadata WHERE key = 'migration:task_category_fields'"
+    ).fetchone()
+    if row is not None:
+        return
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
+    if "category_id" not in cols:
+        conn.execute(
+            "ALTER TABLE tasks ADD COLUMN category_id TEXT NOT NULL DEFAULT 'generic'"
+        )
+    if "incomplete" not in cols:
+        conn.execute(
+            "ALTER TABLE tasks ADD COLUMN incomplete INTEGER NOT NULL DEFAULT 0"
+        )
+    conn.execute(
+        "INSERT OR REPLACE INTO app_metadata(key, value) VALUES ('migration:task_category_fields', 'done')"
     )
 
 

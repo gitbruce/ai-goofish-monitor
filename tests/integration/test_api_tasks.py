@@ -88,7 +88,7 @@ def test_generate_ai_task_returns_job_and_completes_async(api_client, api_contex
 
     async def fake_generate_criteria(*_args, **_kwargs):
         await asyncio.sleep(0.05)
-        return "[V6.3 核心升级]\\nApple Watch criteria"
+        return ("[V6.3 核心升级]\\nApple Watch criteria", "generic")
 
     monkeypatch.setattr(
         "src.services.task_generation_runner.generate_criteria",
@@ -116,7 +116,7 @@ def test_generate_ai_task_returns_job_and_completes_async(api_client, api_contex
         raise AssertionError("任务生成作业未在预期时间内完成")
 
     assert latest_job["task"]["task_name"] == payload["task_name"]
-    assert latest_job["task"]["ai_prompt_criteria_file"].endswith("_criteria.txt")
+    assert latest_job["task"]["ai_prompt_criteria_file"].endswith("apple_watch_s10.txt")
     assert latest_job["task"]["analyze_images"] is False
     assert api_context["scheduler_service"].reload_calls == 1
 

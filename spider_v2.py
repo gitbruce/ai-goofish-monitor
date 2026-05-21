@@ -10,6 +10,7 @@ import re
 from src.config import STATE_FILE
 from src.infrastructure.persistence.sqlite_task_repository import SqliteTaskRepository
 from src.scraper import scrape_xianyu
+from src.services.reference_loader import load_reference_meta, build_schema_section, load_category_index
 
 
 async def main():
@@ -118,9 +119,23 @@ async def main():
                     base_prompt = f_base.read()
                 with open(task["ai_prompt_criteria_file"], 'r', encoding='utf-8') as f_criteria:
                     criteria_text = f_criteria.read()
-                
+
+                # Inject OUTPUT_SCHEMA from category reference if available
+                category_id = task.get("category_id", "generic") or "generic"
+                schema_section = ""
+                try:
+                    reference_meta = load_reference_meta(category_id)
+                    schema_section = build_schema_section(reference_meta)
+                except Exception as e:
+                    print(f"注意: 品类 '{category_id}' 参考库加载失败，跳过 schema 注入: {e}")
+
                 # 动态组合成最终的Prompt
-                task['ai_prompt_text'] = base_prompt.replace("{{CRITERIA_SECTION}}", criteria_text)
+                final_prompt = base_prompt.replace("{{CRITERIA_SECTION}}", criteria_text)
+                if schema_section:
+                    final_prompt = final_prompt.replace("{{OUTPUT_SCHEMA}}", schema_section)
+                # Fallback: remove placeholder if no schema was injected
+                final_prompt = final_prompt.replace("{{OUTPUT_SCHEMA}}", "")
+                task['ai_prompt_text'] = final_prompt
                 
                 # 验证生成的prompt是否有效
                 if len(task['ai_prompt_text']) < 100:

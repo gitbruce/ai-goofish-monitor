@@ -130,6 +130,8 @@ class Task(BaseModel):
     decision_mode: Literal["ai", "keyword"] = "ai"
     keyword_rules: List[str] = Field(default_factory=list)
     is_running: bool = False
+    category_id: str = "generic"
+    incomplete: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -179,6 +181,7 @@ class TaskCreate(BaseModel):
     region: Optional[str] = None
     decision_mode: Literal["ai", "keyword"] = "ai"
     keyword_rules: List[str] = Field(default_factory=list)
+    category_id: str = "generic"
 
     @model_validator(mode="before")
     @classmethod
@@ -247,6 +250,8 @@ class TaskUpdate(BaseModel):
     decision_mode: Optional[Literal["ai", "keyword"]] = None
     keyword_rules: Optional[List[str]] = None
     is_running: Optional[bool] = None
+    category_id: Optional[str] = None
+    incomplete: Optional[bool] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -310,6 +315,7 @@ class TaskGenerateRequest(BaseModel):
     region: Optional[str] = None
     decision_mode: Literal["ai", "keyword"] = "ai"
     keyword_rules: List[str] = Field(default_factory=list)
+    category_id: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod

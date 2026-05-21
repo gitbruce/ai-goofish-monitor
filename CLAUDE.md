@@ -29,6 +29,9 @@ API层 (src/api/routes/)
 - `SchedulerService` - APScheduler 定时调度
 - `AIAnalysisService` - 多模态 AI 分析
 - `NotificationService` - 多渠道通知（ntfy/Bark/企业微信/Telegram/Webhook）
+- `CategoryRouter` - AI 品类路由（user_description → category_id）
+- `ReferenceLoader` - 品类参考库加载（YAML frontmatter + schema）
+- `CriteriaValidator` - 生成标准完整性校验（截断/章节/字段/噪声）
 
 前端 (`web-ui/`)：Vue 3 + Vite + shadcn-vue + Tailwind CSS
 
@@ -87,12 +90,34 @@ pytest tests/unit/test_utils.py::test_safe_get  # 运行单个测试函数
 ## 数据流
 
 1. Web UI / config.json 创建任务
-2. SchedulerService 按 cron 触发或手动启动
-3. ProcessService 启动 spider_v2.py 子进程
-4. scraper.py 使用 Playwright 抓取商品
-5. AIAnalysisService 调用多模态模型分析
-6. NotificationService 推送符合条件的商品
-7. 结果存储：`jsonl/`（数据）、`images/`（图片）、`logs/`（日志）
+2. CategoryRouter 路由用户需求到品类（bicycle.road / digital.laptop / generic）
+3. ReferenceLoader 加载品类参考库 + schema 定义
+4. AI 生成品类专属 criteria（动态 max_output_tokens）→ Validator 校验
+5. Criteria 落盘至 `prompts/tasks/{keyword}.txt`
+6. SchedulerService 按 cron 触发或手动启动
+7. spider_v2.py 运行时：加载 criteria + build_schema_section() 注入 {{OUTPUT_SCHEMA}}
+8. AIAnalysisService 调用多模态模型分析
+9. NotificationService 推送符合条件的商品
+10. 结果存储：`jsonl/`（数据）、`images/`（图片）、`logs/`（日志）
+
+## Prompt 框架目录结构
+
+```
+prompts/
+  base_prompt.txt              ← EagleEye-V7，含 {{CRITERIA_SECTION}} + {{OUTPUT_SCHEMA}}
+  references/                  ← 品类参考库（YAML frontmatter）
+    _index.json                ← 品类路由索引
+    bicycle.road.md            ← 公路自行车参考（12 schema fields）
+    digital.laptop.md          ← 笔记本电脑参考
+    _generic.md                ← 通用兜底参考
+    bicycle.road.features/     ← 真品特征库
+      sl8.md                   ← Specialized Tarmac SL8
+      propel_sl.md             ← Giant Propel Advanced SL
+  tasks/                       ← AI 生成的 criteria 落地位置
+  _archive/                    ← 旧版 *_criteria.txt 备份
+```
+
+扩展品类：在 `prompts/references/` 加文件 + 更新 `_index.json`，无需改代码。
 
 ## 注意事项
 

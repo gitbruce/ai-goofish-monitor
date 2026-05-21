@@ -26,11 +26,12 @@ def test_generate_criteria_closes_ai_client_after_success(monkeypatch, tmp_path)
 
     monkeypatch.setattr(prompt_utils, "AIClient", FakeAIClient)
 
-    result = asyncio.run(
+    result_text, category_id = asyncio.run(
         prompt_utils.generate_criteria("need a gpu", str(reference_file))
     )
 
-    assert result == "generated criteria"
+    assert result_text == "generated criteria"
+    assert isinstance(category_id, str)
     assert close_state["closed"] is True
 
 
