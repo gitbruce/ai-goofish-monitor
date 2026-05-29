@@ -1,0 +1,24 @@
+{
+  "categories": [
+    {
+      "id": "bicycle.road",
+      "summary": "二手公路自行车（整车或车架），含闪电Tarmac/SL系列、捷安特Propel、Trek Madone等运动级公路车",
+      "keywords_hint": ["公路车", "SL8", "Propel", "Madone", "Ultegra"],
+      "reference_file": "bicycle.road.md",
+      "max_output_tokens": 3000
+    },
+    {
+      "id": "digital.laptop",
+      "summary": "二手笔记本电脑，含 MacBook / ThinkPad / 游戏本",
+      "keywords_hint": ["MacBook", "笔记本", "ThinkPad"],
+      "reference_file": "digital.laptop.md",
+      "max_output_tokens": 2000
+    },
+    {
+      "id": "generic",
+      "summary": "通用二手商品（兜底）",
+      "reference_file": "_generic.md",
+      "max_output_tokens": 2000
+    }
+  ]
+}

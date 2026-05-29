@@ -1,8 +1,26 @@
+# IDE
 .idea
 *.iml
+
+# Secrets & credentials
 xianyu_state.json
 .env
+
+# Agent / tool runtime
 .aider*
+.serena/
+.claude/
+.multipowers/
+.omc/
+
+# Worktrees
+.worktrees/
+
+# Generated outputs
+outputs/
+!outputs/.gitkeep
+
+# Runtime data
 images/
 logs/
 jsonl/
@@ -11,7 +29,7 @@ src/__pycache__/
 dist/
 state/
 config.json
-prompts/
-.serena/
+prompts/_archive/
+prompts/tasks/
 price_history/
 data/
