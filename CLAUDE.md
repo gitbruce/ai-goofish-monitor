@@ -1,10 +1,64 @@
-# CLAUDE.md
+# ai-goofish-monitor - Agent Working Agreement
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Project Context
 
-## 项目概述
+- Summary: 基于 Playwright + AI 的闲鱼智能监控机器人。FastAPI 后端 + Vue 3 前端，支持多任务并发监控、多模态 AI 商品分析、多渠道通知推送。
+- Primary goal: 爬虫监控管道 + AI 评估 + 通知推送全链路稳定运行。
+- Main users: 闲鱼买家 / 二手交易监控使用者。
+- Constraint: Do not revert existing user changes. Do not commit real `.env` values, login state, scraped data, or local runtime residue.
 
-基于 Playwright + AI 的闲鱼智能监控机器人。FastAPI 后端 + Vue 3 前端，支持多任务并发监控、多模态 AI 商品分析、多渠道通知推送。
+## Runtime Profile
+
+- Backend: Python (FastAPI + uvicorn + APScheduler + Playwright).
+- Frontend: Vue 3 + Vite + shadcn-vue + Tailwind CSS (`web-ui/`).
+- Local ports: 后端 `8000`（可通过 `SERVER_PORT` 环境变量覆盖）.
+- Startup entrypoint: `./start.sh`（前端构建 + 后端启动）.
+- Docker: `docker compose up --build -d`.
+
+## Source Of Truth
+
+1. Current repository files and git state.
+2. `CLAUDE.md` for project instructions and conventions.
+3. `AGENTS.md` for coding standards, commit/PR rules, and testing guidance.
+4. `config.json` for task definitions, `.env` for secrets and runtime flags.
+5. `prompts/` for AI prompt framework (base prompt, references, tasks).
+
+## Verification
+
+```bash
+pytest                    # 运行所有测试
+pytest --cov=src          # 覆盖率报告
+ruff check .              # Lint
+ruff check --fix .        # Lint 自动修复
+```
+
+测试规范：文件 `tests/**/test_*.py`，函数 `test_*`。PR 前请运行相关测试。
+
+## Workspace Hygiene
+
+This section is extensible. Add new rules as bullets below; later rules supplement earlier ones. Agents must read this section before creating files or branches.
+
+- Use `.worktrees/` for isolated parallel work, experimental branches, or risky refactors. Do not pile divergent changes onto the main checkout; create a worktree, do the work, then merge or discard.
+- Do not create temporary files, scratch reports, ad-hoc logs, debug dumps, or one-off agent outputs in the repository root. Generated reports belong under `outputs/` (ignored except `outputs/.gitkeep`).
+- `.worktrees/`, `.claude/`, `.multipowers/`, `.omc/`, and tool runtime directories are local residue. They must remain ignored and must not be committed.
+- Before editing files, check `git status --short` and preserve unrelated user changes.
+
+## Artifact Policy
+
+- Track: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `README.md`, source code, `prompts/base_prompt.txt`, `prompts/references/`, `web-ui/` frontend sources.
+- Ignore: `.env`, `config.json`, `state.json`, `xianyu_state.json`, local logs, `outputs/*` except `outputs/.gitkeep`, `images/`, `logs/`, `jsonl/`, `dist/`, `__pycache__/`, `data/`, `price_history/`, and generated runtime artifacts.
+
+## Local Environment Notes
+
+When running git network operations from WSL, use the host proxy first. Standard pattern:
+
+```bash
+host_ip=$(ip route show | grep -i default | awk '{print $3}')
+export http_proxy="http://$host_ip:7890"
+export https_proxy="http://$host_ip:7890"
+```
+
+Apply this before `git fetch`, `git pull`, `git push`, or other remote git operations when the WSL environment does not have direct network access.
 
 ## 核心架构
 
@@ -32,8 +86,6 @@ API层 (src/api/routes/)
 - `CategoryRouter` - AI 品类路由（user_description → category_id）
 - `ReferenceLoader` - 品类参考库加载（YAML frontmatter + schema）
 - `CriteriaValidator` - 生成标准完整性校验（截断/章节/字段/噪声）
-
-前端 (`web-ui/`)：Vue 3 + Vite + shadcn-vue + Tailwind CSS
 
 ## 开发命令
 
@@ -64,17 +116,6 @@ python spider_v2.py --task-name "MacBook"    # 运行指定任务
 python spider_v2.py --debug-limit 3          # 调试模式，限制商品数
 python spider_v2.py --config custom.json     # 自定义配置文件
 ```
-
-## 测试
-
-```bash
-pytest                              # 运行所有测试
-pytest --cov=src                    # 覆盖率报告
-pytest tests/unit/test_utils.py    # 运行单个测试文件
-pytest tests/unit/test_utils.py::test_safe_get  # 运行单个测试函数
-```
-
-测试规范：文件 `tests/**/test_*.py`，函数 `test_*`
 
 ## 配置
 
