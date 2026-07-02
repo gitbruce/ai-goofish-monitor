@@ -1,0 +1,142 @@
+{
+  "channel_help": {
+    "create": {
+      "args": [
+        "trellis",
+        "channel",
+        "create",
+        "--help"
+      ],
+      "available": true,
+      "required_flags": [
+        "--scope",
+        "--cwd",
+        "--description",
+        "--context-file"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout_sha256": "3c2182ae47a5b529f37c9c2755564a16860a1946d1c8346b72d1925375a1d6c7"
+    },
+    "messages": {
+      "args": [
+        "trellis",
+        "channel",
+        "messages",
+        "--help"
+      ],
+      "available": true,
+      "required_flags": [
+        "--scope",
+        "--raw",
+        "--since",
+        "--last",
+        "--follow"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout_sha256": "dd4373e5086c018c41ea6efa42798e72c3b7cf46958e581085f40248b76af04b"
+    },
+    "send": {
+      "args": [
+        "trellis",
+        "channel",
+        "send",
+        "--help"
+      ],
+      "available": true,
+      "required_flags": [
+        "--scope",
+        "--as",
+        "--to",
+        "--text-file",
+        "--delivery-mode"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout_sha256": "8ba3c1a0297656b51d17110ce3fea5df1f421065ac4cc4f10bb93b872a1e6a78"
+    },
+    "spawn": {
+      "args": [
+        "trellis",
+        "channel",
+        "spawn",
+        "--help"
+      ],
+      "available": true,
+      "required_flags": [
+        "--scope",
+        "--agent",
+        "--provider",
+        "--as",
+        "--cwd",
+        "--resume",
+        "--timeout"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout_sha256": "b47d3fdde5529e5005b056b213c01782afca0c374d380b9ffc3fa0ca4d3951c4"
+    },
+    "wait": {
+      "args": [
+        "trellis",
+        "channel",
+        "wait",
+        "--help"
+      ],
+      "available": true,
+      "required_flags": [
+        "--scope",
+        "--as",
+        "--to",
+        "--kind",
+        "--include-progress",
+        "--timeout",
+        "--from"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout_sha256": "d835059650fdc81c9ccb8fbab5c2844f78d3475b37a544bdaf45c819b87847be"
+    }
+  },
+  "managed_files": [
+    ".claude/commands/tls-brainstorm.md",
+    ".claude/commands/tls-continue.md",
+    ".claude/commands/tls-final.md",
+    ".claude/commands/tls-impl.md",
+    ".claude/commands/tls-plan.md",
+    ".claude/commands/tls-quality.md",
+    ".claude/commands/tls-status.md",
+    ".claude/commands/trellis/codex-brainstorm.md",
+    ".claude/commands/trellis/codex-continue.md",
+    ".claude/commands/trellis/codex-final-gate.md",
+    ".claude/commands/trellis/codex-plan.md",
+    ".claude/commands/trellis/codex-quality-gate.md",
+    ".claude/commands/trellis/implement-codex-plan.md",
+    ".trellis/agents/codex-brainstorm.md",
+    ".trellis/agents/codex-final-gate.md",
+    ".trellis/agents/codex-plan-review.md",
+    ".trellis/agents/codex-plan.md",
+    ".trellis/agents/codex-quality-gate.md",
+    ".trellis/scripts/codex_proxy.sh",
+    ".trellis/scripts/headless_codex_pack.py"
+  ],
+  "pack_marker": "trellis-headless-codex-pack",
+  "trellis_version": {
+    "args": [
+      "trellis",
+      "--version"
+    ],
+    "available": true,
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "0.6.5"
+  },
+  "workflow_anchors": [
+    "### Request Triage",
+    "[workflow-state:planning]",
+    "[/workflow-state:planning]",
+    "[workflow-state:in_progress]",
+    "[/workflow-state:in_progress]"
+  ]
+}
