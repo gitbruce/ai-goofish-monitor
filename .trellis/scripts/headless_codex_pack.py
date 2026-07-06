@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -24,6 +25,7 @@ EXPECTED_SNIPPETS = {
         PACK_MARKER,
         "codex-brainstorm",
         "codex-dispatch",
+        "proxy-use --arguments",
         "--run-kind brainstorm-request",
         "--agent codex-brainstorm",
         "Do not read\nproject files",
@@ -31,6 +33,7 @@ EXPECTED_SNIPPETS = {
     ".claude/commands/trellis/codex-plan.md": [
         PACK_MARKER,
         "codex-dispatch",
+        "proxy-use --arguments",
         "--run-kind plan-request",
         "--agent codex-plan",
         "--run-kind plan-review-request",
@@ -54,12 +57,14 @@ EXPECTED_SNIPPETS = {
     ".claude/commands/trellis/codex-quality-gate.md": [
         PACK_MARKER,
         "codex-dispatch",
+        "proxy-use --arguments",
         "--run-kind quality-gate-request",
         "--agent codex-quality-gate",
     ],
     ".claude/commands/trellis/codex-final-gate.md": [
         PACK_MARKER,
         "codex-dispatch",
+        "proxy-use --arguments",
         "--run-kind final-gate-request",
         "--agent codex-final-gate",
     ],
@@ -67,6 +72,7 @@ EXPECTED_SNIPPETS = {
         PACK_MARKER,
         "/trellis:codex-brainstorm",
         "codex-dispatch",
+        "proxy-use --arguments",
         "--run-kind brainstorm-request",
         "--agent codex-brainstorm",
     ],
@@ -74,6 +80,7 @@ EXPECTED_SNIPPETS = {
         PACK_MARKER,
         "/trellis:codex-plan",
         "codex-dispatch",
+        "proxy-use --arguments",
         "--run-kind plan-request",
         "--agent codex-plan",
         "--run-kind plan-review-request",
@@ -104,6 +111,7 @@ EXPECTED_SNIPPETS = {
         PACK_MARKER,
         "/trellis:codex-quality-gate",
         "codex-dispatch",
+        "proxy-use --arguments",
         "--run-kind quality-gate-request",
         "--agent codex-quality-gate",
     ],
@@ -111,6 +119,7 @@ EXPECTED_SNIPPETS = {
         PACK_MARKER,
         "/trellis:codex-final-gate",
         "codex-dispatch",
+        "proxy-use --arguments",
         "--run-kind final-gate-request",
         "--agent codex-final-gate",
     ],
@@ -144,12 +153,15 @@ EXPECTED_SNIPPETS = {
         "task_status_report",
         "verify-install",
         "brainstorm-request",
+        "proxy-use",
         "codex-dispatch",
         "codex-status",
         "codex-resume",
     ],
     ".trellis/scripts/codex_proxy.sh": [
         PACK_MARKER,
+        "CODEX_USE_PROXY",
+        "Codex proxy: disabled",
         "http_proxy",
         "https_proxy",
     ],
@@ -197,6 +209,8 @@ TASK_RUN_KINDS = {
 }
 PACK_RUN_KINDS = {"brainstorm-request"}
 ALL_RUN_KINDS = sorted(TASK_RUN_KINDS | PACK_RUN_KINDS)
+PROXY_FALSE_VALUES = {"0", "false", "no", "off"}
+PROXY_TRUE_VALUES = {"1", "true", "yes", "on"}
 
 COMMAND_CLASSES = {
     "codex_dispatch_commands": [
@@ -241,6 +255,20 @@ def run(args: list[str]) -> tuple[int, str, str]:
     except FileNotFoundError as exc:
         return 127, "", str(exc)
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+
+
+def proxy_use_from_arguments(arguments: str) -> str:
+    normalized = arguments.replace("-", "_")
+    pattern = r"(?:^|[\s,;])(?:use_)?proxy\s*[:=]\s*([A-Za-z0-9_]+)"
+    for match in re.finditer(pattern, normalized, re.I):
+        value = match.group(1).lower()
+        if value in PROXY_FALSE_VALUES:
+            return "0"
+        if value in PROXY_TRUE_VALUES:
+            return "1"
+    if re.search(r"(?:^|[\s,;])(?:no_proxy|without_proxy)(?:$|[\s,;])", normalized, re.I):
+        return "0"
+    return os.environ.get("CODEX_USE_PROXY", "1")
 
 
 def sha256_text(text: str) -> str:
@@ -1307,6 +1335,9 @@ def main() -> int:
     brainstorm.add_argument("--prompt", default="")
     brainstorm.add_argument("--output")
 
+    proxy_use = sub.add_parser("proxy-use")
+    proxy_use.add_argument("--arguments", default="")
+
     path_cmd = sub.add_parser("snapshot-path")
     path_cmd.add_argument("kind", choices=["plan-request", "plan-review-request", "quality-gate-request", "final-gate-request", "implementation-handoff"])
 
@@ -1350,6 +1381,9 @@ def main() -> int:
     if args.cmd == "brainstorm-request":
         output = Path(args.output) if args.output else None
         print(brainstorm_request(args.prompt, output))
+        return 0
+    if args.cmd == "proxy-use":
+        print(proxy_use_from_arguments(args.arguments))
         return 0
     if args.cmd == "codex-dispatch":
         return codex_dispatch(args.run_kind, args.agent, Path(args.request), args.timeout)

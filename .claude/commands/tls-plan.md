@@ -33,6 +33,8 @@ Use headless Codex to own Trellis Phase 1 planning from inside Claude Code.
    ```bash
    PLAN_REQUEST="$(python3 ./.trellis/scripts/headless_codex_pack.py snapshot-path plan-request)"
    (
+     CODEX_USE_PROXY="$(python3 ./.trellis/scripts/headless_codex_pack.py proxy-use --arguments "$ARGUMENTS")"
+     export CODEX_USE_PROXY
      . ./.trellis/scripts/codex_proxy.sh
      python3 ./.trellis/scripts/headless_codex_pack.py codex-dispatch \
        --run-kind plan-request \
@@ -51,6 +53,8 @@ Use headless Codex to own Trellis Phase 1 planning from inside Claude Code.
    ```bash
    PLAN_REVIEW_REQUEST="$(python3 ./.trellis/scripts/headless_codex_pack.py snapshot-path plan-review-request)"
    (
+     CODEX_USE_PROXY="$(python3 ./.trellis/scripts/headless_codex_pack.py proxy-use --arguments "$ARGUMENTS")"
+     export CODEX_USE_PROXY
      . ./.trellis/scripts/codex_proxy.sh
      python3 ./.trellis/scripts/headless_codex_pack.py codex-dispatch \
        --run-kind plan-review-request \

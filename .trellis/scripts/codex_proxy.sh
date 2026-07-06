@@ -1,7 +1,15 @@
 # trellis-headless-codex-pack
 # Source this before invoking headless Codex through Trellis.
 
-host_ip="$(ip route show 2>/dev/null | awk 'tolower($0) ~ /^default/ { print $3; exit }')"
+case "${CODEX_USE_PROXY:-1}" in
+  0|false|False|FALSE|no|No|NO|off|Off|OFF)
+    unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
+    echo "Codex proxy: disabled"
+    return 0 2>/dev/null || exit 0
+    ;;
+esac
+
+host_ip="$(ip route show | grep -i default | awk '{print $3}')"
 
 if [ -z "$host_ip" ]; then
   echo "Unable to detect default gateway for Codex proxy." >&2
