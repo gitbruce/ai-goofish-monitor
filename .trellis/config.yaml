@@ -113,3 +113,6 @@ channel:
 codex:
   dispatch_mode: inline
 # trellis-headless-codex-pack:end
+
+codex-proxy: false
+proxy-url: "http://172.28.0.1:7890"

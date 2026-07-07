@@ -27,8 +27,12 @@ the final gate protects the repository from incomplete or unsynchronized work.
 
 - All MUST-FIX quality findings are resolved.
 - Final diff is scoped to the active task.
-- Docs sync and `.trellis/spec/` update decisions are explicit.
-- Verification evidence is sufficient, or blockers are clearly recorded.
+- Every changed file maps to an approved `implement.md` task/slice and its
+  `Done When` acceptance checks.
+- Docs sync and `.trellis/spec/` update decisions are explicit for each
+  changed behavior/config/API/schema/UI surface.
+- Verification evidence is sufficient for the `Verification` section of each
+  task/slice, or blockers are clearly recorded.
 - No unrecognized user changes are mixed into the proposed commit.
 - Commit should not proceed if any task acceptance criterion is unproven.
 

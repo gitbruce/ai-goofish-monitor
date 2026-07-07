@@ -31,14 +31,14 @@ Use headless Codex to own Trellis Phase 1 planning from inside Claude Code.
    ```bash
    PLAN_REQUEST="$(python3 ./.trellis/scripts/headless_codex_pack.py snapshot-path plan-request)"
    (
-     CODEX_USE_PROXY="$(python3 ./.trellis/scripts/headless_codex_pack.py proxy-use --arguments "$ARGUMENTS")"
-     export CODEX_USE_PROXY
      . ./.trellis/scripts/codex_proxy.sh
      python3 ./.trellis/scripts/headless_codex_pack.py codex-dispatch \
-       --run-kind plan-request \
-       --agent codex-plan \
-       --request "$PLAN_REQUEST" \
-       --timeout 30m
+      --run-kind plan-request \
+      --agent codex-plan \
+      --request "$PLAN_REQUEST" \
+      --total-timeout 2h \
+      --lease-timeout 5m \
+      --stale-timeout 15m
    )
    ```
 
@@ -51,14 +51,14 @@ Use headless Codex to own Trellis Phase 1 planning from inside Claude Code.
    ```bash
    PLAN_REVIEW_REQUEST="$(python3 ./.trellis/scripts/headless_codex_pack.py snapshot-path plan-review-request)"
    (
-     CODEX_USE_PROXY="$(python3 ./.trellis/scripts/headless_codex_pack.py proxy-use --arguments "$ARGUMENTS")"
-     export CODEX_USE_PROXY
      . ./.trellis/scripts/codex_proxy.sh
      python3 ./.trellis/scripts/headless_codex_pack.py codex-dispatch \
-       --run-kind plan-review-request \
-       --agent codex-plan-review \
-       --request "$PLAN_REVIEW_REQUEST" \
-       --timeout 20m
+      --run-kind plan-review-request \
+      --agent codex-plan-review \
+      --request "$PLAN_REVIEW_REQUEST" \
+      --total-timeout 1h \
+      --lease-timeout 5m \
+      --stale-timeout 15m
    )
    ```
 

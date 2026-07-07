@@ -27,10 +27,15 @@ decide whether the implementation satisfies the approved task artifacts.
 ## Review Checklist
 
 - Diff satisfies `prd.md`, `design.md`, and `implement.md`.
+- Every changed behavior/config/API/schema/UI/doc file maps back to an
+  approved `implement.md` task/slice with `Why`, `What`, `How`, `Key Design`,
+  `Dependencies`, `Done When`, and `Verification`.
 - No out-of-scope implementation.
 - Tests were added or updated for new behavior and bug fixes.
-- Docs sync is complete where required.
-- Validation commands are appropriate for the changed scope.
+- Docs sync is complete where required by each task/slice. Do not pass a vague
+  "docs later" or "update relevant docs" claim.
+- Validation commands match the commands requested in `implement.md`, or the
+  deviation and collected evidence are justified.
 - No debug logging, temporary bypasses, hidden TODOs, or type-safety bypasses.
 - Cross-layer data flow is coherent when frontend/API/service/storage are
   touched.

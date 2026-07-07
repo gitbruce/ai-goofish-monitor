@@ -136,6 +136,7 @@
     }
   },
   "managed_files": [
+    ".claude/commands/tls-ask-codex.md",
     ".claude/commands/tls-brainstorm.md",
     ".claude/commands/tls-continue.md",
     ".claude/commands/tls-final.md",
@@ -149,6 +150,7 @@
     ".claude/commands/trellis/codex-plan.md",
     ".claude/commands/trellis/codex-quality-gate.md",
     ".claude/commands/trellis/implement-codex-plan.md",
+    ".trellis/agents/codex-ask.md",
     ".trellis/agents/codex-brainstorm.md",
     ".trellis/agents/codex-final-gate.md",
     ".trellis/agents/codex-plan-review.md",

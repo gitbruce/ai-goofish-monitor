@@ -23,14 +23,14 @@ or brainstorm inline before the `codex-dispatch --agent codex-brainstorm` call.
    ```bash
    BRAINSTORM_REQUEST="$(python3 ./.trellis/scripts/headless_codex_pack.py brainstorm-request --prompt "$ARGUMENTS")"
    (
-     CODEX_USE_PROXY="$(python3 ./.trellis/scripts/headless_codex_pack.py proxy-use --arguments "$ARGUMENTS")"
-     export CODEX_USE_PROXY
      . ./.trellis/scripts/codex_proxy.sh
      python3 ./.trellis/scripts/headless_codex_pack.py codex-dispatch \
-       --run-kind brainstorm-request \
-       --agent codex-brainstorm \
-       --request "$BRAINSTORM_REQUEST" \
-       --timeout 20m
+      --run-kind brainstorm-request \
+      --agent codex-brainstorm \
+      --request "$BRAINSTORM_REQUEST" \
+      --total-timeout 1h \
+      --lease-timeout 5m \
+      --stale-timeout 15m
    )
    ```
 

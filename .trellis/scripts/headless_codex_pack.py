@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import subprocess
 import sys
@@ -27,19 +26,25 @@ EXPECTED_SNIPPETS = {
         PACK_MARKER,
         "codex-brainstorm",
         "codex-dispatch",
-        "proxy-use --arguments",
+        "codex_proxy.sh",
         "--run-kind brainstorm-request",
         "--agent codex-brainstorm",
+        "--total-timeout",
+        "--lease-timeout",
+        "--stale-timeout",
         "Do not read\nproject files",
     ],
     ".claude/commands/trellis/codex-plan.md": [
         PACK_MARKER,
         "codex-dispatch",
-        "proxy-use --arguments",
+        "codex_proxy.sh",
         "--run-kind plan-request",
         "--agent codex-plan",
         "--run-kind plan-review-request",
         "--agent codex-plan-review",
+        "--total-timeout",
+        "--lease-timeout",
+        "--stale-timeout",
     ],
     ".claude/commands/trellis/codex-continue.md": [
         PACK_MARKER,
@@ -61,34 +66,46 @@ EXPECTED_SNIPPETS = {
     ".claude/commands/trellis/codex-quality-gate.md": [
         PACK_MARKER,
         "codex-dispatch",
-        "proxy-use --arguments",
+        "codex_proxy.sh",
         "--run-kind quality-gate-request",
         "--agent codex-quality-gate",
+        "--total-timeout",
+        "--lease-timeout",
+        "--stale-timeout",
     ],
     ".claude/commands/trellis/codex-final-gate.md": [
         PACK_MARKER,
         "codex-dispatch",
-        "proxy-use --arguments",
+        "codex_proxy.sh",
         "--run-kind final-gate-request",
         "--agent codex-final-gate",
+        "--total-timeout",
+        "--lease-timeout",
+        "--stale-timeout",
     ],
     ".claude/commands/tls-brainstorm.md": [
         PACK_MARKER,
         "/trellis:codex-brainstorm",
         "codex-dispatch",
-        "proxy-use --arguments",
+        "codex_proxy.sh",
         "--run-kind brainstorm-request",
         "--agent codex-brainstorm",
+        "--total-timeout",
+        "--lease-timeout",
+        "--stale-timeout",
     ],
     ".claude/commands/tls-plan.md": [
         PACK_MARKER,
         "/trellis:codex-plan",
         "codex-dispatch",
-        "proxy-use --arguments",
+        "codex_proxy.sh",
         "--run-kind plan-request",
         "--agent codex-plan",
         "--run-kind plan-review-request",
         "--agent codex-plan-review",
+        "--total-timeout",
+        "--lease-timeout",
+        "--stale-timeout",
     ],
     ".claude/commands/tls-continue.md": [
         PACK_MARKER,
@@ -118,22 +135,51 @@ EXPECTED_SNIPPETS = {
         PACK_MARKER,
         "/trellis:codex-quality-gate",
         "codex-dispatch",
-        "proxy-use --arguments",
+        "codex_proxy.sh",
         "--run-kind quality-gate-request",
         "--agent codex-quality-gate",
+        "--total-timeout",
+        "--lease-timeout",
+        "--stale-timeout",
     ],
     ".claude/commands/tls-final.md": [
         PACK_MARKER,
         "/trellis:codex-final-gate",
         "codex-dispatch",
-        "proxy-use --arguments",
+        "codex_proxy.sh",
         "--run-kind final-gate-request",
         "--agent codex-final-gate",
+        "--total-timeout",
+        "--lease-timeout",
+        "--stale-timeout",
+    ],
+    ".claude/commands/tls-ask-codex.md": [
+        PACK_MARKER,
+        "codex-ask",
+        "codex_proxy.sh",
+        "mktemp -d",
+        "PASS",
+        "MUST-FIX",
+        "BLOCKED",
+        "Recommendation",
+        "does not create, start, modify,\nor finish Trellis tasks",
     ],
     ".trellis/agents/codex-brainstorm.md": [
         PACK_MARKER,
         "name: codex-brainstorm",
         "provider: codex",
+    ],
+    ".trellis/agents/codex-ask.md": [
+        PACK_MARKER,
+        "name: codex-ask",
+        "provider: codex",
+        "P0",
+        "P1",
+        "PASS",
+        "MUST-FIX",
+        "BLOCKED",
+        "Recommendation",
+        "Do not write files",
     ],
     ".trellis/agents/codex-plan.md": [
         PACK_MARKER,
@@ -161,13 +207,17 @@ EXPECTED_SNIPPETS = {
         "verify-install",
         "brainstorm-request",
         "proxy-use",
+        "proxy-enabled",
+        "proxy-url",
+        "codex-ask",
         "codex-dispatch",
         "codex-status",
         "codex-resume",
     ],
     ".trellis/scripts/codex_proxy.sh": [
         PACK_MARKER,
-        "CODEX_USE_PROXY",
+        "proxy-enabled",
+        "proxy-url",
         "Codex proxy: disabled",
         "http_proxy",
         "https_proxy",
@@ -213,6 +263,12 @@ WORKFLOW_ADAPTER_INVENTORY_COMMANDS = [
 ]
 
 TERMINAL_EVENT_KINDS = {"done", "killed", "error"}
+TERMINAL_RUN_STATUSES = {"done", "failed", "killed"}
+ACTIVITY_EVENT_KINDS = {"progress", "message", "done", "killed", "error", "text"}
+WAIT_TIMEOUT_EXIT_CODE = 124
+DEFAULT_TOTAL_TIMEOUT = "2h"
+DEFAULT_LEASE_TIMEOUT = "5m"
+DEFAULT_STALE_TIMEOUT = "15m"
 TASK_RUN_KINDS = {
     "plan-request",
     "plan-review-request",
@@ -275,6 +331,9 @@ COMMAND_CLASSES = {
     "local_status_commands": [
         ".claude/commands/tls-status.md",
     ],
+    "ephemeral_codex_commands": [
+        ".claude/commands/tls-ask-codex.md",
+    ],
     "claude_owned_commands": [
         ".claude/commands/trellis/implement-codex-plan.md",
         ".claude/commands/tls-impl.md",
@@ -302,18 +361,76 @@ def run(args: list[str]) -> tuple[int, str, str]:
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 
 
+def default_proxy_url() -> str:
+    code, out, _ = run(["sh", "-c", "ip route show | grep -i default | awk '{print $3}'"])
+    if code != 0:
+        return ""
+    for line in out.splitlines():
+        host_ip = line.strip()
+        if host_ip:
+            return f"http://{host_ip}:7890"
+    return ""
+
+
+def yaml_top_level_values(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        without_comment = raw_line.split("#", 1)[0]
+        if not without_comment.strip() or without_comment[:1].isspace():
+            continue
+        if ":" not in without_comment:
+            continue
+        key, value = without_comment.split(":", 1)
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values[key.strip()] = value.strip()
+    return values
+
+
+def parse_proxy_bool(value: str, key: str) -> bool:
+    normalized = value.strip().lower()
+    if not normalized:
+        return False
+    if normalized in PROXY_TRUE_VALUES:
+        return True
+    if normalized in PROXY_FALSE_VALUES:
+        return False
+    raise SystemExit(f"Invalid .trellis/config.yaml {key}: expected true/false, got {value!r}")
+
+
+def codex_proxy_settings() -> tuple[bool, str]:
+    config_path = Path(".trellis") / "config.yaml"
+    values: dict[str, str] = {}
+    if config_path.exists():
+        values = yaml_top_level_values(config_path.read_text(encoding="utf-8"))
+
+    enabled = parse_proxy_bool(values.get("codex-proxy", "false"), "codex-proxy")
+    proxy_url = values.get("proxy-url", "").strip() or default_proxy_url()
+    if enabled:
+        if not proxy_url:
+            raise SystemExit(
+                ".trellis/config.yaml codex-proxy is true, but proxy-url is empty "
+                "and the default gateway proxy URL could not be detected."
+            )
+        if not proxy_url.startswith(("http://", "https://")):
+            raise SystemExit(".trellis/config.yaml proxy-url must start with http:// or https://")
+    return enabled, proxy_url
+
+
+def proxy_enabled_value() -> str:
+    enabled, _ = codex_proxy_settings()
+    return "1" if enabled else "0"
+
+
+def proxy_url_value() -> str:
+    _, proxy_url = codex_proxy_settings()
+    return proxy_url
+
+
 def proxy_use_from_arguments(arguments: str) -> str:
-    normalized = arguments.replace("-", "_")
-    pattern = r"(?:^|[\s,;])(?:use_)?proxy\s*[:=]\s*([A-Za-z0-9_]+)"
-    for match in re.finditer(pattern, normalized, re.I):
-        value = match.group(1).lower()
-        if value in PROXY_FALSE_VALUES:
-            return "0"
-        if value in PROXY_TRUE_VALUES:
-            return "1"
-    if re.search(r"(?:^|[\s,;])(?:no_proxy|without_proxy)(?:$|[\s,;])", normalized, re.I):
-        return "0"
-    return os.environ.get("CODEX_USE_PROXY", "1")
+    _ = arguments
+    return proxy_enabled_value()
 
 
 def sha256_text(text: str) -> str:
@@ -793,6 +910,56 @@ def utc_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def parse_utc(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return datetime.strptime(value.strip(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def duration_seconds(value: Any) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    match = re.fullmatch(r"(\d+)(ms|s|m|h)?", text)
+    if not match:
+        raise SystemExit(f"Invalid duration: {text}")
+    amount = int(match.group(1))
+    unit = match.group(2) or "s"
+    if unit == "ms":
+        return amount / 1000
+    if unit == "s":
+        return float(amount)
+    if unit == "m":
+        return float(amount * 60)
+    if unit == "h":
+        return float(amount * 3600)
+    raise SystemExit(f"Invalid duration: {text}")
+
+
+def elapsed_seconds(started_at: Any, now: datetime | None = None) -> float | None:
+    started = parse_utc(started_at)
+    if started is None:
+        return None
+    current = now or datetime.now(timezone.utc)
+    return max(0.0, (current - started).total_seconds())
+
+
+def format_seconds(value: float | int | None) -> str:
+    if value is None:
+        return "unknown"
+    seconds = int(max(0, value))
+    if seconds >= 3600 and seconds % 3600 == 0:
+        return f"{seconds // 3600}h"
+    if seconds >= 60 and seconds % 60 == 0:
+        return f"{seconds // 60}m"
+    return f"{seconds}s"
+
+
 def safe_token(value: str) -> str:
     token = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip()).strip("-")
     return token or "run"
@@ -851,7 +1018,14 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def make_run(run_kind: str, agent: str, request_path: Path, timeout: str) -> tuple[Path, dict[str, Any]]:
+def make_run(
+    run_kind: str,
+    agent: str,
+    request_path: Path,
+    total_timeout: str,
+    lease_timeout: str = DEFAULT_LEASE_TIMEOUT,
+    stale_timeout: str = DEFAULT_STALE_TIMEOUT,
+) -> tuple[Path, dict[str, Any]]:
     root = run_root(run_kind)
     base_run_id = f"{utc_stamp()}-{safe_token(agent)}"
     for index in range(1000):
@@ -876,9 +1050,18 @@ def make_run(run_kind: str, agent: str, request_path: Path, timeout: str) -> tup
         "channel": channel,
         "scope": "project",
         "request_path": request_rel,
-        "timeout": timeout,
+        "timeout": total_timeout,
+        "total_timeout": total_timeout,
+        "lease_timeout": lease_timeout,
+        "stale_timeout": stale_timeout,
         "status": "created",
+        "health": "alive_silent",
         "last_seq": 0,
+        "last_activity_at": None,
+        "last_terminal_at": None,
+        "last_health_check_at": now,
+        "silent_for_seconds": 0,
+        "exit_reason": None,
         "provider_resume_id": None,
         "created_at": now,
         "updated_at": now,
@@ -986,6 +1169,8 @@ def sync_messages(directory: Path, run_data: dict[str, Any]) -> list[dict[str, A
         resume_id = extract_resume_id(event)
         if resume_id:
             run_data["provider_resume_id"] = resume_id
+    observed_activity = record_event_activity(run_data, events)
+    refresh_health(run_data, observed_activity=observed_activity)
     run_data["updated_at"] = utc_now()
     save_json(directory / "run.json", run_data)
     return events
@@ -1003,9 +1188,92 @@ def terminal_status(events: list[dict[str, Any]]) -> str | None:
     return None
 
 
-def update_run(directory: Path, run_data: dict[str, Any], status: str | None = None) -> None:
+def event_timestamp(event: dict[str, Any], fallback: str) -> str:
+    value = event.get("ts")
+    return value if isinstance(value, str) and value.strip() else fallback
+
+
+def record_event_activity(run_data: dict[str, Any], events: list[dict[str, Any]]) -> bool:
+    now = utc_now()
+    observed = False
+    for event in events:
+        kind = event_kind(event)
+        if kind not in ACTIVITY_EVENT_KINDS:
+            continue
+        observed = True
+        event_at = event_timestamp(event, now)
+        run_data["last_activity_at"] = event_at
+        if kind in TERMINAL_EVENT_KINDS:
+            run_data["last_terminal_at"] = event_at
+            if kind == "done":
+                run_data["exit_reason"] = "done"
+            elif kind == "error":
+                run_data["exit_reason"] = "error"
+            elif kind == "killed":
+                reason = event.get("reason")
+                run_data["exit_reason"] = reason if isinstance(reason, str) and reason else "killed"
+    return observed
+
+
+def refresh_health(
+    run_data: dict[str, Any],
+    *,
+    observed_activity: bool = False,
+    now: datetime | None = None,
+) -> None:
+    current = now or datetime.now(timezone.utc)
+    run_data["last_health_check_at"] = current.strftime("%Y-%m-%dT%H:%M:%SZ")
+    status = str(run_data.get("status") or "")
+    if status in TERMINAL_RUN_STATUSES:
+        run_data["health"] = "expired" if run_data.get("exit_reason") == "total_timeout" else "terminal"
+        return
+    if observed_activity:
+        run_data["health"] = "healthy"
+        run_data["silent_for_seconds"] = 0
+        return
+    last_activity_at = run_data.get("last_activity_at") or run_data.get("created_at")
+    silent_for = elapsed_seconds(last_activity_at, current)
+    if silent_for is not None:
+        run_data["silent_for_seconds"] = int(silent_for)
+    stale_timeout = duration_seconds(run_data.get("stale_timeout") or DEFAULT_STALE_TIMEOUT)
+    if silent_for is not None and stale_timeout is not None and stale_timeout > 0 and silent_for >= stale_timeout:
+        run_data["health"] = "stale"
+    else:
+        run_data["health"] = "alive_silent"
+
+
+def total_timeout_seconds(run_data: dict[str, Any]) -> float | None:
+    # Old ledgers did not distinguish hard timeout from wait timeout. Do not
+    # retroactively hard-kill those runs when a newer helper resumes them.
+    if "total_timeout" not in run_data:
+        return None
+    return duration_seconds(run_data.get("total_timeout"))
+
+
+def total_timeout_reached(run_data: dict[str, Any]) -> bool:
+    total = total_timeout_seconds(run_data)
+    if total is None or total <= 0:
+        return False
+    elapsed = elapsed_seconds(run_data.get("created_at"))
+    return elapsed is not None and elapsed >= total
+
+
+def run_command_failure(args: list[str], code: int, out: str, err: str) -> str:
+    command = " ".join(args)
+    detail = err or out or f"exit {code}"
+    return f"Command failed: {command}\n{detail}"
+
+
+def update_run(
+    directory: Path,
+    run_data: dict[str, Any],
+    status: str | None = None,
+    *,
+    observed_activity: bool = False,
+) -> None:
     if status is not None:
         run_data["status"] = status
+    refresh_health(run_data, observed_activity=observed_activity)
     run_data["updated_at"] = utc_now()
     save_json(directory / "run.json", run_data)
 
@@ -1031,6 +1299,7 @@ def create_channel(directory: Path, run_data: dict[str, Any], request_path: Path
 
 
 def spawn_worker(directory: Path, run_data: dict[str, Any]) -> None:
+    total_timeout = run_data.get("total_timeout") or run_data.get("timeout") or DEFAULT_TOTAL_TIMEOUT
     run_required(
         [
             "trellis",
@@ -1048,7 +1317,7 @@ def spawn_worker(directory: Path, run_data: dict[str, Any]) -> None:
             "--cwd",
             str(Path(".").resolve()),
             "--timeout",
-            str(run_data["timeout"]),
+            str(total_timeout),
         ]
     )
     update_run(directory, run_data, "worker-spawned")
@@ -1077,24 +1346,28 @@ def send_request(directory: Path, run_data: dict[str, Any], request_path: Path) 
 
 
 def wait_for_run(directory: Path, run_data: dict[str, Any]) -> dict[str, Any]:
-    wait_args = [
-        "trellis",
-        "channel",
-        "wait",
-        str(run_data["channel"]),
-        "--scope",
-        str(run_data["scope"]),
-        "--as",
-        "claude",
-        "--to",
-        str(run_data["agent"]),
-        "--kind",
-        "progress,message,done,killed,error",
-        "--include-progress",
-        "--timeout",
-        str(run_data["timeout"]),
-    ]
     while True:
+        if total_timeout_reached(run_data):
+            expire_run(directory, run_data)
+            return run_data
+        lease_timeout = run_data.get("lease_timeout") or run_data.get("timeout") or DEFAULT_LEASE_TIMEOUT
+        wait_args = [
+            "trellis",
+            "channel",
+            "wait",
+            str(run_data["channel"]),
+            "--scope",
+            str(run_data["scope"]),
+            "--as",
+            "claude",
+            "--to",
+            str(run_data["agent"]),
+            "--kind",
+            "progress,message,done,killed,error",
+            "--include-progress",
+            "--timeout",
+            str(lease_timeout),
+        ]
         code, wait_output, wait_err = run(wait_args)
         if wait_output:
             print(wait_output)
@@ -1104,14 +1377,39 @@ def wait_for_run(directory: Path, run_data: dict[str, Any]) -> dict[str, Any]:
             update_run(directory, run_data, "failed")
             raise
         status = terminal_status(events)
-        update_run(directory, run_data, status or "running")
+        update_run(directory, run_data, status or "running", observed_activity=bool(events))
         if status:
             return run_data
+        if total_timeout_reached(run_data):
+            expire_run(directory, run_data)
+            return run_data
+        if code == WAIT_TIMEOUT_EXIT_CODE:
+            update_run(directory, run_data, "running")
+            continue
         if code != 0:
             update_run(directory, run_data, "failed")
-            command = " ".join(wait_args)
-            detail = wait_err or wait_output or f"exit {code}"
-            raise SystemExit(f"Command failed: {command}\n{detail}")
+            raise SystemExit(run_command_failure(wait_args, code, wait_output, wait_err))
+
+
+def expire_run(directory: Path, run_data: dict[str, Any]) -> None:
+    kill_args = [
+        "trellis",
+        "channel",
+        "kill",
+        str(run_data["channel"]),
+        "--scope",
+        str(run_data["scope"]),
+        "--as",
+        str(run_data["agent"]),
+    ]
+    code, out, err = run(kill_args)
+    if out:
+        print(out)
+    run_data["exit_reason"] = "total_timeout"
+    run_data["health"] = "expired"
+    update_run(directory, run_data, "killed")
+    if code != 0:
+        raise SystemExit(run_command_failure(kill_args, code, out, err))
 
 
 def print_run_ledger(run_data: dict[str, Any], *, include_run_id: bool) -> None:
@@ -1119,13 +1417,24 @@ def print_run_ledger(run_data: dict[str, Any], *, include_run_id: bool) -> None:
         print(f"Codex run: {run_data['run_id']}", flush=True)
     print(f"channel: {run_data['channel']}", flush=True)
     print(f"status: {run_data['status']}", flush=True)
+    if run_data.get("health"):
+        print(f"health: {run_data['health']}", flush=True)
+    if run_data.get("silent_for_seconds") is not None:
+        print(f"silent_for: {format_seconds(run_data.get('silent_for_seconds'))}", flush=True)
     print(f"messages: {run_data['messages_path']}", flush=True)
 
 
-def codex_dispatch(run_kind: str, agent: str, request: Path, timeout: str) -> int:
+def codex_dispatch(
+    run_kind: str,
+    agent: str,
+    request: Path,
+    total_timeout: str,
+    lease_timeout: str,
+    stale_timeout: str,
+) -> int:
     if not request.is_file():
         raise SystemExit(f"Request file not found: {request}")
-    directory, run_data = make_run(run_kind, agent, request, timeout)
+    directory, run_data = make_run(run_kind, agent, request, total_timeout, lease_timeout, stale_timeout)
     create_channel(directory, run_data, request)
     spawn_worker(directory, run_data)
     send_request(directory, run_data, request)
@@ -1137,15 +1446,195 @@ def codex_dispatch(run_kind: str, agent: str, request: Path, timeout: str) -> in
     return 0
 
 
+def parse_channel_events(raw: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for raw_line in raw.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            event = {"kind": "text", "message": line}
+        if not isinstance(event, dict):
+            event = {"kind": "text", "message": line}
+        events.append(event)
+    return events
+
+
+def channel_events(channel: str, scope: str, since: int) -> list[dict[str, Any]]:
+    out = run_required(
+        [
+            "trellis",
+            "channel",
+            "messages",
+            channel,
+            "--scope",
+            scope,
+            "--raw",
+            "--since",
+            str(since),
+        ]
+    )
+    return parse_channel_events(out)
+
+
+def create_ephemeral_channel(channel: str, agent: str, request_path: Path) -> None:
+    run_required(
+        [
+            "trellis",
+            "channel",
+            "create",
+            channel,
+            "--scope",
+            "project",
+            "--cwd",
+            str(Path(".").resolve()),
+            "--description",
+            f"{PACK_MARKER} ask-codex {agent}",
+            "--context-file",
+            str(request_path.resolve()),
+        ]
+    )
+
+
+def spawn_ephemeral_worker(channel: str, agent: str, total_timeout: str) -> None:
+    run_required(
+        [
+            "trellis",
+            "channel",
+            "spawn",
+            channel,
+            "--scope",
+            "project",
+            "--agent",
+            agent,
+            "--provider",
+            "codex",
+            "--as",
+            agent,
+            "--cwd",
+            str(Path(".").resolve()),
+            "--timeout",
+            total_timeout,
+        ]
+    )
+
+
+def send_ephemeral_request(channel: str, agent: str, request_path: Path) -> None:
+    run_required(
+        [
+            "trellis",
+            "channel",
+            "send",
+            channel,
+            "--scope",
+            "project",
+            "--as",
+            "claude",
+            "--to",
+            agent,
+            "--text-file",
+            str(request_path),
+            "--delivery-mode",
+            "requireRunningWorker",
+        ]
+    )
+
+
+def codex_ask(
+    request: Path,
+    agent: str,
+    total_timeout: str,
+    lease_timeout: str,
+) -> int:
+    if not request.is_file():
+        raise SystemExit(f"Request file not found: {request}")
+
+    channel = f"hcx-ask-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}"
+    create_ephemeral_channel(channel, agent, request)
+    spawn_ephemeral_worker(channel, agent, total_timeout)
+    send_ephemeral_request(channel, agent, request)
+
+    print(f"Codex ask channel: {channel}", flush=True)
+    since = 0
+    transcript: list[str] = []
+    started_at = datetime.now(timezone.utc)
+    total_seconds = duration_seconds(total_timeout)
+    while True:
+        if total_seconds is not None and (datetime.now(timezone.utc) - started_at).total_seconds() >= total_seconds:
+            kill_args = [
+                "trellis",
+                "channel",
+                "kill",
+                channel,
+                "--scope",
+                "project",
+                "--as",
+                agent,
+            ]
+            code, out, err = run(kill_args)
+            if out:
+                print(out)
+            if code != 0:
+                raise SystemExit(run_command_failure(kill_args, code, out, err))
+            print("status: killed")
+            print("Codex ask expired after total timeout.")
+            return 1
+        wait_args = [
+            "trellis",
+            "channel",
+            "wait",
+            channel,
+            "--scope",
+            "project",
+            "--as",
+            "claude",
+            "--to",
+            agent,
+            "--kind",
+            "progress,message,done,killed,error",
+            "--include-progress",
+            "--timeout",
+            lease_timeout,
+        ]
+        code, wait_output, wait_err = run(wait_args)
+        if wait_output:
+            print(wait_output)
+        events = channel_events(channel, "project", since)
+        for event in events:
+            since = max(since, event_seq(event))
+            text = event_text_for_outcome(event).strip()
+            if text:
+                transcript.append(text)
+        status = terminal_status(events)
+        if status:
+            print("status: " + status)
+            if transcript:
+                print("Codex ask result:")
+                print("\n\n".join(transcript))
+            return 0 if status == "done" else 1
+        if code == WAIT_TIMEOUT_EXIT_CODE:
+            continue
+        if code != 0:
+            raise SystemExit(run_command_failure(wait_args, code, wait_output, wait_err))
+
+
 def codex_status(run_id: str) -> int:
     directory = find_run_dir(run_id)
     run_data = load_json(directory / "run.json")
     events = sync_messages(directory, run_data)
     status = terminal_status(events)
-    update_run(directory, run_data, status)
+    update_run(directory, run_data, status, observed_activity=bool(events))
     print(f"Codex run: {run_data['run_id']}")
     print(f"channel: {run_data['channel']}")
     print(f"status: {run_data['status']}")
+    print(f"health: {run_data.get('health', 'unknown')}")
+    print(f"silent_for: {format_seconds(run_data.get('silent_for_seconds'))}")
+    if run_data.get("last_activity_at"):
+        print(f"last_activity_at: {run_data['last_activity_at']}")
+    if run_data.get("last_health_check_at"):
+        print(f"last_health_check_at: {run_data['last_health_check_at']}")
     print(f"last_seq: {run_data['last_seq']}")
     print(f"messages: {run_data['messages_path']}")
     if run_data.get("provider_resume_id"):
@@ -1157,14 +1646,19 @@ def codex_resume(run_id: str) -> int:
     directory = find_run_dir(run_id)
     run_data = load_json(directory / "run.json")
     if run_data.get("status") in {"done", "failed", "killed"}:
+        refresh_health(run_data)
+        save_json(directory / "run.json", run_data)
         print(f"Codex run already terminal: {run_data['run_id']}")
         print(f"status: {run_data['status']}")
+        print(f"health: {run_data.get('health', 'unknown')}")
         print(f"messages: {run_data['messages_path']}")
         return 0
     wait_for_run(directory, run_data)
     print(f"Reattached Codex run: {run_data['run_id']}")
     print(f"channel: {run_data['channel']}")
     print(f"status: {run_data['status']}")
+    print(f"health: {run_data.get('health', 'unknown')}")
+    print(f"silent_for: {format_seconds(run_data.get('silent_for_seconds'))}")
     print(f"messages: {run_data['messages_path']}")
     if run_data.get("provider_resume_id"):
         print(f"provider_resume_id: {run_data['provider_resume_id']}")
@@ -1212,6 +1706,29 @@ def has_codex_inline_dispatch(config: str) -> bool:
             return True
 
     return False
+
+
+def codex_proxy_config_failures(config: str) -> list[str]:
+    failures: list[str] = []
+    values = yaml_top_level_values(config)
+
+    proxy_enabled = values.get("codex-proxy")
+    if proxy_enabled is None:
+        failures.append(".trellis/config.yaml codex-proxy")
+    else:
+        normalized = proxy_enabled.strip().lower()
+        if normalized not in PROXY_TRUE_VALUES | PROXY_FALSE_VALUES:
+            failures.append(".trellis/config.yaml codex-proxy must be true/false")
+
+    proxy_url = values.get("proxy-url")
+    if proxy_url is None:
+        failures.append(".trellis/config.yaml proxy-url")
+    elif not proxy_url.strip():
+        failures.append(".trellis/config.yaml proxy-url")
+    elif not proxy_url.startswith(("http://", "https://")):
+        failures.append(".trellis/config.yaml proxy-url must start with http:// or https://")
+
+    return failures
 
 
 def pack_workflow_block(workflow: str) -> str | None:
@@ -1370,6 +1887,7 @@ def install_failures() -> list[str]:
         config = config_path.read_text(encoding="utf-8")
         if not has_codex_inline_dispatch(config):
             failures.append(".trellis/config.yaml codex.dispatch_mode")
+        failures.extend(codex_proxy_config_failures(config))
 
     return failures
 
@@ -1434,6 +1952,12 @@ def report_install() -> int:
     print("Local status commands:")
     for rel_path in COMMAND_CLASSES["local_status_commands"]:
         print(command_row(rel_path, require_dispatch=False))
+
+    print()
+    print("Ephemeral Codex commands:")
+    for rel_path in COMMAND_CLASSES["ephemeral_codex_commands"]:
+        print(command_row(rel_path, require_dispatch=False))
+    print("- ledger: none; uses temporary request files and an ephemeral channel")
 
     print()
     print("Claude-owned commands:")
@@ -1541,6 +2065,8 @@ def main() -> int:
 
     proxy_use = sub.add_parser("proxy-use")
     proxy_use.add_argument("--arguments", default="")
+    sub.add_parser("proxy-enabled")
+    sub.add_parser("proxy-url")
 
     path_cmd = sub.add_parser("snapshot-path")
     path_cmd.add_argument("kind", choices=["plan-request", "plan-review-request", "quality-gate-request", "final-gate-request", "implementation-handoff"])
@@ -1549,7 +2075,17 @@ def main() -> int:
     dispatch.add_argument("--run-kind", required=True, choices=ALL_RUN_KINDS)
     dispatch.add_argument("--agent", required=True)
     dispatch.add_argument("--request", required=True)
-    dispatch.add_argument("--timeout", default="30m")
+    dispatch.add_argument("--timeout", help="Deprecated alias for --total-timeout")
+    dispatch.add_argument("--total-timeout", default=None)
+    dispatch.add_argument("--lease-timeout", default=DEFAULT_LEASE_TIMEOUT)
+    dispatch.add_argument("--stale-timeout", default=DEFAULT_STALE_TIMEOUT)
+
+    ask = sub.add_parser("codex-ask")
+    ask.add_argument("--request", required=True)
+    ask.add_argument("--agent", default="codex-ask")
+    ask.add_argument("--timeout", help="Deprecated alias for --total-timeout")
+    ask.add_argument("--total-timeout", default=None)
+    ask.add_argument("--lease-timeout", default=DEFAULT_LEASE_TIMEOUT)
 
     status = sub.add_parser("codex-status")
     status.add_argument("run_id")
@@ -1589,8 +2125,30 @@ def main() -> int:
     if args.cmd == "proxy-use":
         print(proxy_use_from_arguments(args.arguments))
         return 0
+    if args.cmd == "proxy-enabled":
+        print(proxy_enabled_value())
+        return 0
+    if args.cmd == "proxy-url":
+        print(proxy_url_value())
+        return 0
     if args.cmd == "codex-dispatch":
-        return codex_dispatch(args.run_kind, args.agent, Path(args.request), args.timeout)
+        total_timeout = args.total_timeout or args.timeout or DEFAULT_TOTAL_TIMEOUT
+        duration_seconds(total_timeout)
+        duration_seconds(args.lease_timeout)
+        duration_seconds(args.stale_timeout)
+        return codex_dispatch(
+            args.run_kind,
+            args.agent,
+            Path(args.request),
+            total_timeout,
+            args.lease_timeout,
+            args.stale_timeout,
+        )
+    if args.cmd == "codex-ask":
+        total_timeout = args.total_timeout or args.timeout or "20m"
+        duration_seconds(total_timeout)
+        duration_seconds(args.lease_timeout)
+        return codex_ask(Path(args.request), args.agent, total_timeout, args.lease_timeout)
     if args.cmd == "codex-status":
         return codex_status(args.run_id)
     if args.cmd == "codex-resume":
