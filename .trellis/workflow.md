@@ -150,42 +150,36 @@ Phase 3: Finish  → verify, update spec, commit, and wrap up
 ```
 
 <!-- trellis-headless-codex-pack:start -->
-### Headless Codex Operating Model
+### Trellis Workflow Interface
 
-This project uses a fixed local collaboration model:
+This project uses one shared Trellis task state machine and shared task
+artifacts. Slash-command choice selects the implementation adapter for the next
+step:
 
-- Claude Code is the only interactive operator.
-- Headless Codex owns Phase 1 planning and independent planning review.
-- Headless Codex owns pre-task brainstorming when `/trellis:codex-brainstorm` is used.
-- Claude Code owns implementation and fixing Codex findings.
-- Headless Codex owns quality and final gates.
-- Claude Code performs commits and finish-work after Codex gates pass.
+- Native `/trellis:*` commands follow the upstream Trellis implementation.
+- `/tls-*` and `/trellis:codex-*` commands follow this pack's Codex
+  implementation.
+- Both implementations read and write the same `.trellis/tasks/<task>/`
+  artifacts and use the same `task.py start` status transition.
+- Do not infer the implementation adapter from task artifacts, previous gate
+  results, or workflow state. Infer it only from the slash command the user ran.
 
-Use these Claude commands:
+Native `/trellis:continue` remains unmanaged by this pack and may be used at
+any point on the same task artifacts. Use `/tls-continue` or
+`/trellis:codex-continue` when this turn should use the Codex implementation.
 
-- `/tls-brainstorm <topic>` as the short daily alias for headless Codex brainstorming.
-- `/tls-continue` as the short daily alias for advancing the Codex pack workflow without overriding native `/trellis:continue`.
-- `/tls-status` for a read-only summary of the active task, gate state, git snapshot, and direct next slash command.
-- `/tls-plan` as the short daily alias for headless Codex planning and planning review.
-- `/tls-impl` for Claude implementation from the approved Codex plan.
-- `/tls-quality` as the short daily alias for headless Codex quality review.
-- `/tls-final` as the short daily alias for headless Codex final readiness review.
-- `/trellis:codex-brainstorm <topic>` for stable pre-task project enhancement exploration through headless Codex.
-- `/trellis:codex-continue` for the stable additive Codex workflow router.
-- `/trellis:codex-plan` for Phase 1 planning through headless Codex.
-- `/trellis:implement-codex-plan` for Claude implementation from the approved plan.
-- `/trellis:codex-quality-gate` after implementation or fixes.
-- `/trellis:codex-final-gate` before commit.
-
-Native `/trellis:continue` remains unmanaged by this pack. Use `/tls-continue`
-or `/trellis:codex-continue` when you want the Codex pack route.
+Full adapter command inventory and artifact roles live in
+`.trellis/headless-codex-pack/manifest.json` and
+`headless_codex_pack.py report-install`.
 
 When asking the user to choose a route, task subset, or go/no-go decision, use
 ASCII-only labels such as `1.`, `2.`, `3.` or `A.`, `B.`. Do not use circled
 numerals, superscripts, emoji, or other symbolic number glyphs; they can render
 too small or mojibake in terminal transcripts.
 
-Do not run `task.py start` until the plan-review result says PASS.
+Adapter-specific gates live in the slash command files. This workflow must not
+turn Codex plan review, quality gate, or final gate results into requirements
+for native `/trellis:continue`.
 <!-- trellis-headless-codex-pack:end -->
 
 ### Request Triage
@@ -233,7 +227,7 @@ Load `trellis-brainstorm`; stay in planning.
 Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start.
-trellis-headless-codex-pack: for Codex-owned flow use `/tls-continue` or `/trellis:codex-continue`; `task.py start` is blocked until headless Codex plan review says PASS.
+trellis-headless-codex-pack: implementation adapter is selected by slash command; native `/trellis:continue` follows upstream Trellis on these artifacts, while `/tls-continue` or `/trellis:codex-continue` follows the Codex command file for this turn.
 [/workflow-state:planning]
 
 <!-- Per-turn breadcrumb: shown throughout Phase 1 when codex.dispatch_mode=inline.
@@ -267,7 +261,7 @@ Tools: `trellis-implement` / `trellis-research` are sub-agent types only (Task/A
 Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
 Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `trellis-implement`, do NOT spawn another `trellis-implement` or `trellis-check`; if already running as `trellis-check`, do NOT spawn another `trellis-check` or `trellis-implement`. Dispatch is main session only.
 Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
-trellis-headless-codex-pack: for Codex-owned flow use `/tls-continue` or `/trellis:codex-continue`; Claude implements, then headless Codex quality/final gates run before commit.
+trellis-headless-codex-pack: implementation adapter is selected by slash command; native `/trellis:continue` follows upstream Trellis on these artifacts, while `/tls-continue` or `/trellis:codex-continue` follows the Codex command file for this turn.
 [/workflow-state:in_progress]
 
 <!-- Per-turn breadcrumb: shown while status='in_progress' when

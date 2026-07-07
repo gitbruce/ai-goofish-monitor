@@ -1,4 +1,40 @@
 {
+  "adapter_contract": {
+    "adapters": {
+      "codex": {
+        "commands": [
+          "/tls-continue",
+          "/trellis:codex-continue"
+        ],
+        "contract": "Codex pack command files",
+        "owner": "trellis-headless-codex-pack"
+      },
+      "native": {
+        "commands": [
+          "/trellis:continue"
+        ],
+        "contract": "upstream Trellis command files",
+        "owner": "native/unmanaged"
+      }
+    },
+    "artifact_roles": {
+      ".claude/commands/tls-continue.md": "codex_adapter_alias",
+      ".claude/commands/trellis/codex-continue.md": "codex_adapter",
+      ".claude/commands/trellis/continue.md": "native_adapter",
+      ".trellis/headless-codex-pack/manifest.json": "adapter_registry",
+      ".trellis/tasks/<task>/": "shared_artifacts",
+      ".trellis/workflow.md": "interface"
+    },
+    "interface": "trellis-task-workflow",
+    "route_selection": "slash_command",
+    "shared_artifacts": ".trellis/tasks/<task>/",
+    "status_transition": "task.py start",
+    "workflow_rules": [
+      "workflow_is_interface_only",
+      "adapter_specific_gates_live_in_command_files",
+      "no_global_codex_gates_for_native_continue"
+    ]
+  },
   "channel_help": {
     "create": {
       "args": [

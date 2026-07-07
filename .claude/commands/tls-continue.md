@@ -6,6 +6,11 @@ Short alias for `/trellis:codex-continue`.
 Advance the current Trellis task through this pack's Codex-owned workflow
 without overriding native `/trellis:continue`.
 
+Slash-command choice selects the implementation adapter for this turn. Use this
+alias when the user wants the Codex pack implementation on the shared Trellis
+task artifacts; use native `/trellis:continue` when the user wants the upstream
+Trellis implementation on the same artifacts.
+
 ## Preconditions
 
 - The project has run `trellis init -u bruce --claude --codex --gemini`.
@@ -55,3 +60,5 @@ too small or mojibake in terminal transcripts.
    artifacts and ask one short routing question before acting.
 
 Do not bypass Codex plan review, quality gate, or final gate in this command.
+Those are Codex-adapter gates only; they do not rewrite the native
+`/trellis:continue` contract.

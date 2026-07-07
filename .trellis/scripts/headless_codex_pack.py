@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 PACK_MARKER = "trellis-headless-codex-pack"
+START = f"<!-- {PACK_MARKER}:start -->"
+END = f"<!-- {PACK_MARKER}:end -->"
 
 EXPECTED_SNIPPETS = {
     ".claude/commands/trellis/codex-brainstorm.md": [
@@ -42,12 +44,14 @@ EXPECTED_SNIPPETS = {
     ".claude/commands/trellis/codex-continue.md": [
         PACK_MARKER,
         "without overriding native `/trellis:continue`",
+        "Slash-command choice selects the implementation adapter",
         "ASCII-only labels",
         "Do not use circled\nnumerals",
         "PHASE_EXIT=$?",
         "continue routing from the printed context unless output is empty or malformed",
         "`status=planning`: run `/tls-plan`",
         "Do not bypass Codex plan review",
+        "do not rewrite the native\n`/trellis:continue` contract",
     ],
     ".claude/commands/trellis/implement-codex-plan.md": [
         PACK_MARKER,
@@ -89,16 +93,19 @@ EXPECTED_SNIPPETS = {
     ".claude/commands/tls-continue.md": [
         PACK_MARKER,
         "/trellis:codex-continue",
+        "Slash-command choice selects the implementation adapter",
         "ASCII-only labels",
         "Do not use circled\nnumerals",
         "PHASE_EXIT=$?",
         "continue routing from the printed context unless output is empty or malformed",
         "`status=planning`: run `/tls-plan`",
         "Do not bypass Codex plan review",
+        "do not rewrite the native\n`/trellis:continue` contract",
     ],
     ".claude/commands/tls-status.md": [
         PACK_MARKER,
         "headless_codex_pack.py status",
+        "reports the Codex adapter's view",
         "Do not run `task.py start`, dispatch Codex, edit files, or commit",
     ],
     ".claude/commands/tls-impl.md": [
@@ -167,37 +174,43 @@ EXPECTED_SNIPPETS = {
     ],
 }
 
-WORKFLOW_SNIPPETS = [
-    PACK_MARKER,
-    "/tls-brainstorm",
+WORKFLOW_INTERFACE_REQUIRED = [
+    "Trellis Workflow Interface",
+    "shared Trellis task state machine",
+    "Slash-command choice selects the implementation adapter",
+    "same `.trellis/tasks/<task>/`",
+    "Infer it only from the slash command the user ran",
+    "/trellis:continue",
     "/tls-continue",
-    "/tls-status",
+    "/trellis:codex-continue",
+    ".trellis/headless-codex-pack/manifest.json",
+    "headless_codex_pack.py report-install",
+    "Adapter-specific gates live in the slash command files",
+]
+
+WORKFLOW_FORBIDDEN_PHRASES = [
+    "This project uses a fixed local collaboration model",
+    "Headless Codex owns Phase 1",
+    "For the Codex implementation",
+    "For Codex-owned commands only",
+    "plan-review result says PASS",
+    "task.py start` is blocked until headless Codex plan review says PASS",
+    "runs the Codex plan/review adapter before the same `task.py start` transition",
+    "routes through Claude implementation plus Codex quality/final gates",
+]
+
+WORKFLOW_ADAPTER_INVENTORY_COMMANDS = [
+    "/tls-brainstorm",
     "/tls-plan",
     "/tls-impl",
     "/tls-quality",
     "/tls-final",
     "/trellis:codex-brainstorm",
-    "/trellis:codex-continue",
     "/trellis:codex-plan",
+    "/trellis:implement-codex-plan",
     "/trellis:codex-quality-gate",
     "/trellis:codex-final-gate",
-    "ASCII-only labels",
-    "[workflow-state:planning]",
-    "[workflow-state:in_progress]",
 ]
-
-WORKFLOW_STATE_SNIPPETS = {
-    "planning": (
-        f"{PACK_MARKER}: for Codex-owned flow use `/tls-continue` or "
-        "`/trellis:codex-continue`; `task.py start` is blocked "
-        "until headless Codex plan review says PASS."
-    ),
-    "in_progress": (
-        f"{PACK_MARKER}: for Codex-owned flow use `/tls-continue` or "
-        "`/trellis:codex-continue`; Claude implements, then headless Codex "
-        "quality/final gates run before commit."
-    ),
-}
 
 TERMINAL_EVENT_KINDS = {"done", "killed", "error"}
 TASK_RUN_KINDS = {
@@ -211,6 +224,38 @@ PACK_RUN_KINDS = {"brainstorm-request"}
 ALL_RUN_KINDS = sorted(TASK_RUN_KINDS | PACK_RUN_KINDS)
 PROXY_FALSE_VALUES = {"0", "false", "no", "off"}
 PROXY_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+ADAPTER_CONTRACT = {
+    "interface": "trellis-task-workflow",
+    "route_selection": "slash_command",
+    "shared_artifacts": ".trellis/tasks/<task>/",
+    "status_transition": "task.py start",
+    "adapters": {
+        "native": {
+            "commands": ["/trellis:continue"],
+            "owner": "native/unmanaged",
+            "contract": "upstream Trellis command files",
+        },
+        "codex": {
+            "commands": ["/tls-continue", "/trellis:codex-continue"],
+            "owner": PACK_MARKER,
+            "contract": "Codex pack command files",
+        },
+    },
+    "artifact_roles": {
+        ".trellis/workflow.md": "interface",
+        ".trellis/tasks/<task>/": "shared_artifacts",
+        ".claude/commands/trellis/continue.md": "native_adapter",
+        ".claude/commands/trellis/codex-continue.md": "codex_adapter",
+        ".claude/commands/tls-continue.md": "codex_adapter_alias",
+        ".trellis/headless-codex-pack/manifest.json": "adapter_registry",
+    },
+    "workflow_rules": [
+        "workflow_is_interface_only",
+        "adapter_specific_gates_live_in_command_files",
+        "no_global_codex_gates_for_native_continue",
+    ],
+}
 
 COMMAND_CLASSES = {
     "codex_dispatch_commands": [
@@ -283,8 +328,31 @@ def current_task() -> Path:
         if line.startswith("Current task:"):
             value = line.split(":", 1)[1].strip()
             if value and value != "(none)":
-                return Path(value)
+                task = Path(value)
+                validation_error = validate_task_path(task)
+                if validation_error:
+                    raise SystemExit(validation_error)
+                return task
     raise SystemExit("No active task. Create a Trellis task first.")
+
+
+def validate_task_path(task: Path) -> str | None:
+    if not task.exists():
+        return (
+            f"stale active task pointer: {rel(task)} does not exist. "
+            "Run `python3 ./.trellis/scripts/task.py start <existing-task-dir>` "
+            "or select a current Trellis task before using this Codex adapter."
+        )
+    if not task.is_dir():
+        return f"stale active task pointer: {rel(task)} is not a directory."
+    task_json = task / "task.json"
+    if not task_json.exists():
+        return (
+            f"stale active task pointer: {rel(task_json)} is missing. "
+            "Run `python3 ./.trellis/scripts/task.py start <existing-task-dir>` "
+            "or select a current Trellis task before using this Codex adapter."
+        )
+    return None
 
 
 def rel(path: Path) -> str:
@@ -369,7 +437,11 @@ def current_task_or_none() -> tuple[Path | None, str | None]:
         if line.startswith("Current task:"):
             value = line.split(":", 1)[1].strip()
             if value and value != "(none)":
-                return Path(value), None
+                task = Path(value)
+                validation_error = validate_task_path(task)
+                if validation_error:
+                    return None, validation_error
+                return task, None
             return None, None
     return None, "task.py current output did not include an active task"
 
@@ -424,13 +496,38 @@ def latest_run_records(task: Path) -> list[tuple[Path, dict[str, Any]]]:
     return records
 
 
+def event_text_for_outcome(event: dict[str, Any]) -> str:
+    by = str(event.get("by") or event.get("from") or "")
+    if by == "claude" or by.startswith("supervisor:"):
+        return ""
+
+    parts: list[str] = []
+    for key in ("text", "message"):
+        value = event.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+    detail = event.get("detail")
+    if isinstance(detail, dict):
+        value = detail.get("message")
+        if isinstance(value, str):
+            parts.append(value)
+    return "\n".join(parts)
+
+
 def outcome_from_messages(path: Path) -> str:
     if not path.exists():
         return "unknown"
-    text = path.read_text(encoding="utf-8", errors="replace")
-    for token in ["MUST-FIX", "BLOCKED", "PASS"]:
-        if token in text:
-            return token
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        text = event_text_for_outcome(event)
+        for token in ["MUST-FIX", "BLOCKED", "PASS"]:
+            if token in text:
+                return token
     return "unknown"
 
 
@@ -441,12 +538,76 @@ def latest_outcome(task: Path, run_kind: str) -> tuple[str, str]:
         messages = directory / "messages.jsonl"
         outcome = outcome_from_messages(messages)
         status = str(data.get("status") or "unknown")
+        if outcome == "unknown" and status in {"killed", "failed"}:
+            outcome = status
         return outcome, f"{rel(directory)} ({status})"
     return "missing", "(none)"
 
 
+def native_route_for_status(status: str) -> str:
+    if status == "planning":
+        return "/trellis:continue (upstream planning/review/start route on shared artifacts)"
+    if status == "in_progress":
+        return "/trellis:continue (upstream implement/check/finish route on shared artifacts)"
+    if status == "completed":
+        return "/trellis:finish-work if the task is not archived yet"
+    return "/trellis:continue (upstream Trellis route on shared artifacts)"
+
+
+def codex_route_items(
+    status: str,
+    plan_outcome: str,
+    quality_outcome: str,
+    final_outcome: str,
+    implementation_handoff: bool,
+) -> list[str]:
+    if status == "planning":
+        if plan_outcome == "PASS":
+            return [
+                "shell action: python3 ./.trellis/scripts/task.py start <task-dir>",
+                "slash command after start: /tls-impl",
+                "why no immediate slash command: activation is a task.py state transition, not a slash-command phase",
+                "fallback slash command: /tls-continue",
+            ]
+        if plan_outcome == "BLOCKED":
+            return [
+                "slash command: /tls-plan after resolving the blocker",
+            ]
+        return [
+            "slash command: /tls-plan",
+        ]
+    if status == "in_progress":
+        if not implementation_handoff:
+            return [
+                "slash command: /tls-impl",
+            ]
+        if quality_outcome != "PASS":
+            return [
+                "slash command: /tls-quality",
+            ]
+        if final_outcome != "PASS":
+            return [
+                "slash command: /tls-final",
+            ]
+        return [
+            "shell action: commit approved files",
+            "slash command after commit: /trellis:finish-work",
+            "why no immediate slash command: commit is a git operation, not a slash-command phase",
+            "fallback slash command: /tls-continue",
+        ]
+    if status == "completed":
+        return [
+            "slash command: /trellis:finish-work if the task is not archived yet",
+        ]
+    return [
+        "slash command: /tls-plan if still planning, or /tls-impl if already started",
+    ]
+
+
 def task_status_report() -> int:
     print("Trellis Headless Codex Pack Status")
+    print("Adapter: Codex pack view of shared Trellis task artifacts")
+    print("Native route: use /trellis:continue for upstream Trellis on the same artifacts")
     print()
 
     task, task_error = current_task_or_none()
@@ -457,7 +618,8 @@ def task_status_report() -> int:
             print(f"- detail: {task_error}")
         print()
         print("Next:")
-        print("- slash command: /tls-brainstorm <topic> for exploration, or /tls-plan after task-creation consent")
+        print("- native route: /trellis:continue after selecting or creating an upstream Trellis task")
+        print("- codex route: /tls-brainstorm <topic> for exploration, or /tls-plan after task-creation consent")
         print("- note: /tls-status is read-only and does not create or start tasks")
         print()
         print("Git snapshot:")
@@ -498,56 +660,20 @@ def task_status_report() -> int:
 
     handoff = task / "handoff" / "implementation-handoff.md"
     implementation_handoff = handoff.exists()
-    next_items: list[str] = []
-
-    if status == "planning":
-        if plan_outcome == "PASS":
-            next_items = [
-                "shell action: python3 ./.trellis/scripts/task.py start <task-dir>",
-                "slash command after start: /tls-impl",
-                "why no immediate slash command: activation is a task.py state transition, not a slash-command phase",
-                "fallback slash command: /tls-continue",
-            ]
-        elif plan_outcome == "BLOCKED":
-            next_items = [
-                "slash command: /tls-plan after resolving the blocker",
-            ]
-        else:
-            next_items = [
-                "slash command: /tls-plan",
-            ]
-    elif status == "in_progress":
-        if not implementation_handoff:
-            next_items = [
-                "slash command: /tls-impl",
-            ]
-        elif quality_outcome != "PASS":
-            next_items = [
-                "slash command: /tls-quality",
-            ]
-        elif final_outcome != "PASS":
-            next_items = [
-                "slash command: /tls-final",
-            ]
-        else:
-            next_items = [
-                "shell action: commit approved files",
-                "slash command after commit: /trellis:finish-work",
-                "why no immediate slash command: commit is a git operation, not a slash-command phase",
-                "fallback slash command: /tls-continue",
-            ]
-    elif status == "completed":
-        next_items = [
-            "slash command: /trellis:finish-work if the task is not archived yet",
-        ]
-    else:
-        next_items = [
-            "slash command: /tls-plan if still planning, or /tls-impl if already started",
-        ]
+    codex_next_items = codex_route_items(
+        status,
+        plan_outcome,
+        quality_outcome,
+        final_outcome,
+        implementation_handoff,
+    )
 
     print()
-    print("Next:")
-    for item in next_items:
+    print("Routes:")
+    print(f"- shared state: {status}")
+    print(f"- native route: {native_route_for_status(status)}")
+    print("- codex route:")
+    for item in codex_next_items:
         print(f"- {item}")
 
     recent = latest_run_records(task)[:3]
@@ -1088,6 +1214,66 @@ def has_codex_inline_dispatch(config: str) -> bool:
     return False
 
 
+def pack_workflow_block(workflow: str) -> str | None:
+    if START not in workflow or END not in workflow:
+        return None
+    _, rest = workflow.split(START, 1)
+    block, _ = rest.split(END, 1)
+    return block
+
+
+def pack_state_lines(workflow: str) -> list[str]:
+    lines: list[str] = []
+    for state in ("planning", "in_progress"):
+        block = workflow_state_block(workflow, state)
+        if block is None:
+            continue
+        lines.extend(line for line in block.splitlines() if PACK_MARKER in line)
+    return lines
+
+
+def workflow_contract_failures(workflow: str) -> list[str]:
+    failures: list[str] = []
+    block = pack_workflow_block(workflow)
+    if block is None:
+        return [".trellis/workflow.md adapter contract block missing"]
+
+    for token in WORKFLOW_INTERFACE_REQUIRED:
+        if token not in block:
+            failures.append(f".trellis/workflow.md interface contract missing: {token}")
+
+    for command in WORKFLOW_ADAPTER_INVENTORY_COMMANDS:
+        if command in block:
+            failures.append(f".trellis/workflow.md interface block contains adapter inventory command: {command}")
+
+    contract_regions = [block, *pack_state_lines(workflow)]
+    for phrase in WORKFLOW_FORBIDDEN_PHRASES:
+        if any(phrase in region for region in contract_regions):
+            failures.append(f".trellis/workflow.md interface leaks adapter implementation: {phrase}")
+
+    for state in ("planning", "in_progress"):
+        state_block = workflow_state_block(workflow, state)
+        if state_block is None:
+            failures.append(f".trellis/workflow.md workflow state missing: {state}")
+            continue
+        if PACK_MARKER not in state_block:
+            failures.append(f".trellis/workflow.md workflow state guidance missing: {state}")
+        if "implementation adapter is selected by slash command" not in state_block:
+            failures.append(f".trellis/workflow.md workflow state does not select adapter by command: {state}")
+        if "native `/trellis:continue` follows upstream Trellis" not in state_block:
+            failures.append(f".trellis/workflow.md workflow state missing native adapter route: {state}")
+        if "follows the Codex command file for this turn" not in state_block:
+            failures.append(f".trellis/workflow.md workflow state missing Codex adapter route: {state}")
+
+    return failures
+
+
+def adapter_contract_failures(contract: Any) -> list[str]:
+    if contract != ADAPTER_CONTRACT:
+        return ["manifest adapter_contract mismatch"]
+    return []
+
+
 def load_manifest() -> tuple[dict, str | None]:
     path = Path(".trellis") / "headless-codex-pack" / "manifest.json"
     if not path.exists():
@@ -1105,6 +1291,7 @@ def manifest_shape_failures(manifest: dict) -> list[str]:
     failures: list[str] = []
     required = [
         "pack_marker",
+        "adapter_contract",
         "trellis_version",
         "channel_help",
         "workflow_anchors",
@@ -1116,6 +1303,8 @@ def manifest_shape_failures(manifest: dict) -> list[str]:
 
     if manifest.get("pack_marker") != PACK_MARKER:
         failures.append("manifest pack_marker mismatch")
+    if "adapter_contract" in manifest:
+        failures.extend(adapter_contract_failures(manifest["adapter_contract"]))
     if "trellis_version" in manifest and not isinstance(manifest["trellis_version"], dict):
         failures.append("manifest invalid key: trellis_version")
     if "channel_help" in manifest and not isinstance(manifest["channel_help"], dict):
@@ -1166,13 +1355,13 @@ def install_failures() -> list[str]:
         failures.append(".trellis/workflow.md")
     else:
         workflow = workflow_path.read_text(encoding="utf-8")
-        for snippet in WORKFLOW_SNIPPETS:
-            if snippet not in workflow:
-                failures.append(f".trellis/workflow.md missing snippet: {snippet}")
-        for state, snippet in WORKFLOW_STATE_SNIPPETS.items():
-            block = workflow_state_block(workflow, state)
-            if block is None or snippet not in block:
-                failures.append(f".trellis/workflow.md workflow state guidance missing: {state}")
+        failures.extend(workflow_contract_failures(workflow))
+
+    manifest, manifest_error = load_manifest()
+    if manifest_error:
+        failures.append(manifest_error)
+    else:
+        failures.extend(manifest_shape_failures(manifest))
 
     config_path = Path(".trellis/config.yaml")
     if not config_path.exists():
@@ -1214,6 +1403,21 @@ def command_row(rel_path: str, require_dispatch: bool) -> str:
 
 def report_install() -> int:
     print("Trellis Headless Codex Pack Install Report")
+    print()
+    print("Adapter contract:")
+    print(f"- interface: {ADAPTER_CONTRACT['interface']}")
+    print(f"- route selection: {ADAPTER_CONTRACT['route_selection']}")
+    print(f"- shared artifacts: {ADAPTER_CONTRACT['shared_artifacts']}")
+    print(f"- status transition: {ADAPTER_CONTRACT['status_transition']}")
+    for name, adapter in ADAPTER_CONTRACT["adapters"].items():
+        commands = ", ".join(adapter["commands"])
+        print(f"- {name} adapter: {commands}; owner={adapter['owner']}; contract={adapter['contract']}")
+
+    print()
+    print("Artifact roles:")
+    for path, role in ADAPTER_CONTRACT["artifact_roles"].items():
+        print(f"- {path}: {role}")
+
     print()
     print("Command classes:")
 

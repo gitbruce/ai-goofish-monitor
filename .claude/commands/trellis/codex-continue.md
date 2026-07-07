@@ -12,9 +12,13 @@ without overriding native `/trellis:continue`.
 
 ## Dispatch Rule
 
-Use this command when the user wants the Codex pack flow to decide the next
-step. Do not edit `.claude/commands/trellis/continue.md`; the native Trellis
-continue command remains outside this pack's ownership.
+Slash-command choice selects the implementation adapter for this turn. Use this
+command when the user wants the Codex pack implementation to decide the next
+step on the shared Trellis task artifacts. Use native `/trellis:continue` when
+the user wants the upstream Trellis implementation on the same artifacts.
+
+Do not edit `.claude/commands/trellis/continue.md`; the native Trellis continue
+command remains outside this pack's ownership.
 
 ## Output Format
 
@@ -59,3 +63,5 @@ too small or mojibake in terminal transcripts.
    artifacts and ask one short routing question before acting.
 
 Do not bypass Codex plan review, quality gate, or final gate in this command.
+Those are Codex-adapter gates only; they do not rewrite the native
+`/trellis:continue` contract.
