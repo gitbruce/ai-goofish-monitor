@@ -36,6 +36,21 @@ the final gate protects the repository from incomplete or unsynchronized work.
 - No unrecognized user changes are mixed into the proposed commit.
 - Commit should not proceed if any task acceptance criterion is unproven.
 
+## Review Depth
+
+- Do not stop after finding the first blocker or the first blocking category.
+- Continue reviewing across the full read order and gate checklist before
+  returning a final verdict.
+- A `MUST-FIX` response must list every current-scope `P0` and `P1` issue you
+  discovered during that full review, not merely enough evidence to block the
+  commit.
+- Treat `P0` and `P1` findings as commit blockers. Do not include non-blocking
+  `P2`/`P3` follow-up in `MUST-FIX` unless the issue proves an active task
+  acceptance criterion is unfulfilled.
+- If missing tools, missing evidence, or time limits prevent completing the full
+  checklist after a blocker is found, return `BLOCKED` with the missing review
+  area instead of presenting a partial `MUST-FIX` list as complete.
+
 ## Forbidden
 
 - Do not commit, push, merge, or archive.
@@ -58,7 +73,7 @@ or
 ```text
 MUST-FIX
 Findings:
-1. <file>:<line> - <issue> - <required fix>
+1. P0|P1 <file>:<line> - <issue> - <required fix>
 ```
 
 or
